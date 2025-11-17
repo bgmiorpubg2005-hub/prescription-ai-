@@ -1,0 +1,5 @@
+{
+  "name": "MediScan AI",
+  "description": "An AI-based system that reads printed prescriptions and lab reports. It extracts key information, generates medicine reminders, analyzes lab values against standard ranges, and provides personalized health recommendations.",
+  "requestFramePermissions": []
+}
