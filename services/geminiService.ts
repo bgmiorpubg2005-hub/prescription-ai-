@@ -1,22 +1,20 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { PrescriptionData, LabReportData } from '../types';
 
-if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable is not set");
+// ❌ REMOVE this check (process.env does NOT work in Vite)
+// if (!process.env.API_KEY) {
+//     throw new Error("API_KEY environment variable is not set");
+// }
+
+// ✅ Use Vite environment variable
+if (!import.meta.env.VITE_API_KEY) {
+  throw new Error("VITE_API_KEY is not set in environment variables");
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-const model = 'gemini-2.5-flash';
+const ai = new GoogleGenAI({
+  apiKey: import.meta.env.VITE_API_KEY
+});
 
-const fileToGenerativePart = (base64Data: string, mimeType: string) => {
-  return {
-    inlineData: {
-      data: base64Data,
-      mimeType,
-    },
-  };
-};
 
 const cleanResponseText = (text: string | undefined): string => {
     if (!text) return "{}";
