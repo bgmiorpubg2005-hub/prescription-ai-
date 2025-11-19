@@ -44,9 +44,11 @@ const App: React.FC = () => {
         }
         setLabReportData(data);
       }
-    } catch (err) {
-      console.error(err);
-      setError('An error occurred during analysis. Please try again with a clearer image.');
+    } catch (err: any) {
+      console.error("Analysis failed:", err);
+      // Provide more specific error message if available
+      const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred.';
+      setError(`Analysis failed: ${errorMessage}. Please try again with a clearer image.`);
     } finally {
       setIsLoading(false);
     }
