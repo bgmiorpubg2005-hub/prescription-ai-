@@ -1,51 +1,50 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { PrescriptionData, LabReportData } from "../types";
+import { PrescriptionData, LabReportData, FileInput } from "../types";
 
-// ✅ Ensure environment variable exists
+// ---------------------------------------------------------
+// 1️⃣ Initialize Gemini With VITE API KEY
+// ---------------------------------------------------------
 if (!import.meta.env.VITE_API_KEY) {
-  throw new Error("VITE_API_KEY is not set in environment variables");
+  throw new Error("❌ VITE_API_KEY is missing. Add it in .env");
 }
 
-// ✅ Initialize Gemini Client
 const ai = new GoogleGenAI({
   apiKey: import.meta.env.VITE_API_KEY,
 });
 
-// ✅ Define model name
+// Model
 const model = "gemini-2.5-flash";
 
-
 // ---------------------------------------------------------
-// ⭐ Utility: Convert base64 → Generative Part for Gemini
+// 2️⃣ Convert base64 → Generative Part
 // ---------------------------------------------------------
-function fileToGenerativePart(base64Data: string, mimeType: string) {
+function fileToGenerativePart(base64: string, mimeType: string) {
   return {
     inlineData: {
-      data: base64Data.replace(/^data:.*;base64,/, ""),
+      data: base64.replace(/^data:.*;base64,/, ""),
       mimeType,
     },
   };
 }
 
-
 // ---------------------------------------------------------
-// ⭐ Utility: Clean JSON from model output
+// 3️⃣ Clean Model Output JSON
 // ---------------------------------------------------------
 const cleanResponseText = (text: string | undefined): string => {
   if (!text) return "{}";
 
-  const firstBrace = text.indexOf("{");
-  const lastBrace = text.lastIndexOf("}");
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
 
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    return text.substring(firstBrace, lastBrace + 1);
+  if (start !== -1 && end !== -1 && end > start) {
+    return text.substring(start, end + 1);
   }
+
   return text.replace(/```json/g, "").replace(/```/g, "").trim();
 };
 
-
 // ---------------------------------------------------------
-// ⭐ Prescription Schema
+// 4️⃣ Prescription Schema
 // ---------------------------------------------------------
 const prescriptionSchema = {
   type: Type.OBJECT,
@@ -78,9 +77,8 @@ const prescriptionSchema = {
   required: ["is_document_valid", "document_type", "disease", "medicines"],
 };
 
-
 // ---------------------------------------------------------
-// ⭐ Lab Report Schema
+// 5️⃣ Lab Report Schema
 // ---------------------------------------------------------
 const labReportSchema = {
   type: Type.OBJECT,
@@ -132,29 +130,26 @@ const labReportSchema = {
   required: ["is_document_valid", "document_type", "results", "recommendations"],
 };
 
-
 // ---------------------------------------------------------
-// ⭐ Analyze Prescription
+// 6️⃣ Analyze Prescription
 // ---------------------------------------------------------
 export const analyzePrescription = async (
-  imageData: string,
-  mimeType: string
+  files: FileInput[]
 ): Promise<PrescriptionData> => {
-  const imagePart = fileToGenerativePart(imageData, mimeType);
+  const parts = files.map((f) => fileToGenerativePart(f.data, f.mimeType));
 
   const prompt = `
 You are a multilingual medical prescription expert.
-Determine if the image is a valid prescription.
+Determine if the upload is a REAL medical prescription.
 
-IF VALID:
-- is_document_valid = true
-- document_type = PRESCRIPTION
+If valid:
+- classify as PRESCRIPTION
 - extract disease
-- extract medicines with: name, dosage, frequency, timing, reason
-- convert frequency to standard form (e.g., Twice a day)
-- calculate time_gap_hours (Twice a day = 12, Thrice a day = 8, etc.)
+- extract medicines with name, dosage, timing, frequency
+- normalize frequency
+- calculate time_gap_hours
 
-IF NOT VALID:
+If invalid:
 - is_document_valid = false
 - document_type = OTHER
 - return empty values
@@ -163,7 +158,7 @@ IF NOT VALID:
   try {
     const response = await ai.models.generateContent({
       model,
-      contents: { parts: [imagePart, { text: prompt }] },
+      contents: { parts: [...parts, { text: prompt }] },
       config: {
         responseMimeType: "application/json",
         responseSchema: prescriptionSchema,
@@ -171,49 +166,46 @@ IF NOT VALID:
       },
     });
 
-    const parsed = JSON.parse(cleanResponseText(response.text));
+    const json = cleanResponseText(response.text);
+    const parsed = JSON.parse(json);
 
     return {
       is_document_valid: parsed.is_document_valid ?? false,
       document_type: parsed.document_type || "OTHER",
       disease: parsed.disease || "",
-      medicines: Array.isArray(parsed.medicines) ? parsed.medicines : [],
+      medicines: parsed.medicines || [],
     };
-  } catch (error) {
-    console.error("Error analyzing prescription:", error);
-    throw error;
+  } catch (err) {
+    console.error("Prescription Error:", err);
+    throw err;
   }
 };
 
-
 // ---------------------------------------------------------
-// ⭐ Analyze Lab Report
+// 7️⃣ Analyze Lab Report
 // ---------------------------------------------------------
 export const analyzeLabReport = async (
-  imageData: string,
-  mimeType: string
+  files: FileInput[]
 ): Promise<LabReportData> => {
-  const imagePart = fileToGenerativePart(imageData, mimeType);
+  const parts = files.map((f) => fileToGenerativePart(f.data, f.mimeType));
 
   const prompt = `
-You are a medical lab report expert.
-Determine if the image is a valid lab report.
-
-IF VALID:
-- extract test results
+You are a lab diagnostics expert.
+If file is a lab report:
+- extract all test results
 - classify values
-- generate diet + lifestyle recommendations
+- give medical interpretation
+- give food & lifestyle recommendations
 
-IF NOT:
+If not a lab report:
 - is_document_valid = false
-- document_type = OTHER
-- return empty structures
+- return empty results and recommendations
 `;
 
   try {
     const response = await ai.models.generateContent({
       model,
-      contents: { parts: [imagePart, { text: prompt }] },
+      contents: { parts: [...parts, { text: prompt }] },
       config: {
         responseMimeType: "application/json",
         responseSchema: labReportSchema,
@@ -221,16 +213,17 @@ IF NOT:
       },
     });
 
-    const parsed = JSON.parse(cleanResponseText(response.text));
+    const json = cleanResponseText(response.text);
+    const parsed = JSON.parse(json);
 
     return {
       is_document_valid: parsed.is_document_valid ?? false,
       document_type: parsed.document_type || "OTHER",
-      results: Array.isArray(parsed.results) ? parsed.results : [],
+      results: parsed.results || [],
       recommendations: parsed.recommendations || { food: [], lifestyle: [] },
     };
-  } catch (error) {
-    console.error("Error analyzing lab report:", error);
-    throw error;
+  } catch (err) {
+    console.error("Lab Report Error:", err);
+    throw err;
   }
 };

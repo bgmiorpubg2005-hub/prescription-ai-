@@ -4,6 +4,18 @@ export enum AnalysisType {
   LabReport = 'LAB_REPORT'
 }
 
+export interface UserProfile {
+  name: string;
+  age: string;
+  email: string;
+  isLoggedIn: boolean;
+}
+
+export interface FileInput {
+  data: string;
+  mimeType: string;
+}
+
 export interface Medicine {
   name: string;
   dosage: string;
